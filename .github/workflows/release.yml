@@ -1,0 +1,85 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Publish APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare Release Directory & Artifact
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk release/ebook-maker-v1.0.0.apk
+          ls -la release/
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ebook-maker-apk
+          path: release/ebook-maker-v1.0.0.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0
+          name: "Ebook Maker v1.0.0"
+          body: |
+            ## 📱 Ebook Maker v1.0.0 (Searchable PDF eBook Maker)
+
+            검색 가능한 PDF 전자책 제작 안드로이드 앱 첫 번째 정식 릴리즈입니다.
+
+            ### ✨ 주요 기능
+            - **실시간 자동 촬영 파이프라인**: CameraX 기반 프레임 분석, 사각형 검출, N프레임 이동량 안정성 + Laplacian 선명도 판정 및 자동 셔터
+            - **페이지 넘김 감지**: 촬영 후 프레임 차분(Diff) 감지로 동일 페이지 중복 촬영 방지
+            - **영상 보정 & 화질 개선**: 4점 좌표 기반 정규 직사각형 원근 변환(Warp Perspective) 및 적응형 이진화(Adaptive Binarization)
+            - **온디바이스 OCR**: Google ML Kit v2 기반 한국어 및 영어 고속 텍스트 인식
+            - **투명 텍스트 레이어 PDF 조립**: PDFBox-Android 기반 스트리밍 PDF 생성 (본문 검색 및 텍스트 복사 지원)
+            - **세션 영속화 & 일시정지/재개**: Room DB 기반 프로세스 종료 복원 지원
+            - **OOM 방지 메모리 관리**: 디스크 스트리밍 파이프라인, 즉시 비트맵 해제 및 썸네일 분리
+
+            ### 📥 설치 파일 다운로드
+            - 아래 `ebook-maker-v1.0.0.apk` 파일을 다운로드하여 스마트폰에 직접 설치(Sideload)하실 수 있습니다.
+          files: |
+            release/ebook-maker-v1.0.0.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
